@@ -1,4 +1,4 @@
-# QIDI Q2 firmware 1.1.0 — full extract
+# QIDI Q2 firmware 1.1.1 — full extract
 
 > **Unofficial archive.** A community unpack of QIDI's stock Q2 firmware, kept for
 > reference, research, and repair. **Not affiliated with or endorsed by QIDI
@@ -11,45 +11,46 @@
 > `python scripts/rehydrate.py` — it downloads this version's bundle from the matching
 > GitHub release, verifies it, overlays it, and checks every file against the manifest.
 
-This repository is a **full unpack of the QIDI Q2 v1.1.0 firmware update package**,
+This repository is a **full unpack of the QIDI Q2 v1.1.1 firmware update package**,
 produced on Windows with `tar.exe` (bsdtar / libarchive) and Python.
 
-- **Source:** `Q2_V1.1.0.zip` (136,769,734 bytes)
-  - MD5 `2e4824daf847fac35220b7da17637818`
-  - SHA-256 `2f1ba204dc324f9aa2d4c00549f15a6e124e3f35c5ad116e306731f5e115e450`
-- **SOC version:** `V1.1.0` (built 2025-11-10)
+- **Source:** `Q2_V1.1.1.zip` (137,130,401 bytes)
+  - MD5 `add1a1c1b0dec6e0b91fc2c2384ccdd3`
+  - SHA-256 `4c7d0f5b52d1a780f3e02b92bea6c7b751690c2b4da529eafd2ceb662241ecb7`
+- **SOC version:** `V1.1.1` (built 2026-01-09)
 - Extracted: 2026-06-10
 
-> Note: like 1.1.1, the 1.1.0 package has **no `firmware_manifest.json` and no BOX
-> firmware**, and the home dir is `/home/mks/` (1.1.2 added the manifest + BOX and
-> switched to `/home/qidi/`). The zip nests its members under `QD_Update/`.
+> Note: the 1.1.1 package has **no `firmware_manifest.json` and no BOX firmware** —
+> both were added in 1.1.2. The home dir here is `/home/mks/` (1.1.2 switched to
+> `/home/qidi/`).
 
 ## Contents
 
 | Path | What |
 |---|---|
-| `rootfs/` | the SOC application payload from `data.tar.xz` — `etc/ home/mks/ root/ usr/` plus a root-level `dev_info.txt` (`QIDI@Q2`); klipper, klippy-env, fluidd, moonraker, and QIDI's `algo_app` (see below). **3083 files, 0.54 GB.** |
+| `rootfs/` | the SOC application payload from `data.tar.xz` (klipper, klippy-env, fluidd, moonraker under `home/mks/`, plus QIDI's `algo_app` under `usr/local/bin/` — see below). **3086 files, 0.54 GB.** |
 | `control/` | the `.deb` package metadata (`control.tar.xz`) |
 | `package/` | the non-SOC update members copied from the zip: `QD_Q2_MCU`, `QD_Q2_THR` |
 | `package/*.dict.json` | the inflated, pretty-printed Klipper data dictionaries from each MCU blob (see below) |
 | `rootfs-extract.log` | bsdtar messages from the rootfs extraction (symlink/ownership warnings) |
-| `scripts/` | generic, reusable extraction code (`extract-firmware.ps1` + `fw_dict.py`) — see `scripts/README.md` |
+| `scripts/` | extraction + asset tooling (`extract-firmware.ps1`, `fw_dict.py`, `split-assets.py`, `rehydrate.py`) — see `scripts/README.md` |
+| `assets-manifest.json` | links this tree to the binary bundle attached to the release (consumed by `scripts/rehydrate.py`) |
 
 ## How it was extracted
 
-The SOC blob (`QD_Update/QD_Q2_SOC_V1.1.0_20251110_Release`) is a **Debian package**
-(an `ar` archive: `debian-binary` + `control.tar.xz` + `data.tar.xz`). `data.tar.xz`
-is the root filesystem overlay.
+The SOC blob (`QD_Q2_SOC_V1.1.1_20260109_Release`) is a **Debian package** (an `ar`
+archive: `debian-binary` + `control.tar.xz` + `data.tar.xz`). `data.tar.xz` is the
+root filesystem overlay.
 
 ```powershell
-$zip  = "<path-to>\Q2_V1.1.0.zip"
+$zip  = "<path-to>\Q2_V1.1.1.zip"
 $work = ".\work"                            # scratch for the .deb + *.tar.xz
 $full = "."                                 # the extract — this repo's root
 
-# 1. pull the SOC .deb out of the zip (entry is nested under QD_Update/)
+# 1. pull the SOC .deb out of the zip
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $a = [System.IO.Compression.ZipFile]::OpenRead($zip)
-$e = $a.Entries | Where-Object { $_.FullName -like '*QD_Q2_SOC*' }
+$e = $a.Entries | Where-Object { $_.FullName -like 'QD_Q2_SOC*' }
 [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, "$work\QD_Q2_SOC.deb", $true)
 $a.Dispose()
 
@@ -60,7 +61,7 @@ tar.exe -xf "$work\QD_Q2_SOC.deb" -C $work control.tar.xz data.tar.xz
 tar.exe -xf "$work\control.tar.xz" -C "$full\control"
 tar.exe -xf "$work\data.tar.xz"    -C "$full\rootfs"
 
-# 4. copy the MCU/THR firmware blobs out of the zip (non-SOC entries, by leaf name)
+# 4. copy the MCU/THR firmware blobs out of the zip (non-SOC entries)
 #    -> $full\package\
 ```
 
@@ -80,7 +81,10 @@ embedded **zlib-compressed Klipper data dictionary** was inflated with
 | `QD_Q2_THR` | `KLP_MCU_THR_V2_1.0.5` |
 
 Both are **Klipper** MCU firmware (GPLv3), built with GNU Arm Embedded Toolchain
-10.3-2021.10.
+10.3-2021.10. They are **identical to 1.1.0** (same versions *and* byte sizes) — the
+MCU/THR firmware was unchanged from 1.1.0 to 1.1.1; only the SOC payload differs.
+(1.1.1 uses the `KLP_MCU_*_V2_1.0.x` naming scheme; 1.1.2 switched the MCU/THR to
+numeric `02.0x.0x.xx` versions matching its manifest.)
 
 ## The `algo_app` service (QIDI's AI print monitor)
 
@@ -129,6 +133,7 @@ license:
   © QIDI Technology**, included only as the firmware ships them. This repository
   grants no license to use or redistribute them.
 
-The extraction tooling under `scripts/` is the only original work here.
+Only the firmware-extraction tooling (`extract-firmware.ps1` / `fw_dict.py`) is
+original work.
 
-See `scripts/README.md` for the reusable extraction method.
+See `scripts/README.md` for the extraction + asset-bundling method.

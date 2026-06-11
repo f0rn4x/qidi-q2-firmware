@@ -8,6 +8,7 @@ REMOVE_PATTERNS=(
     "/home/mks/klipper/klippy/extras/box_rfid.*"
     "/home/mks/klipper/klippy/extras/box_stepper.*"
     "/home/mks/klipper/klippy/extras/buttons_irq.*"
+    "/home/mks/klipper/klippy/feedermonitor.*"
 )
 
 for pattern in "${REMOVE_PATTERNS[@]}"; do

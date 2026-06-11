@@ -1,11 +1,11 @@
 {
-  "version": "1.1.0",
-  "tag": "v1.1.0",
+  "version": "1.1.1",
+  "tag": "v1.1.1",
   "asset": {
-    "file": "qidi-q2-1.1.0-assets.zip",
-    "bytes": 225713378,
-    "sha256": "a6d3f7b6857b26b07dff823c43a621e11a95da8fdcb46dbdde03972846e45303",
-    "url": "https://github.com/f0rn4x/qidi-q2-firmware/releases/download/v1.1.0/qidi-q2-1.1.0-assets.zip"
+    "file": "qidi-q2-1.1.1-assets.zip",
+    "bytes": 225933364,
+    "sha256": "4a71b4cf461a3f1f44f3b5d2eb27bbe61cd8f0dbaa06ccd9f00dd921ab6835a1",
+    "url": "https://github.com/f0rn4x/qidi-q2-firmware/releases/download/v1.1.1/qidi-q2-1.1.1-assets.zip"
   },
   "files": [
     {
@@ -834,6 +834,11 @@
       "sha256": "7d86aaa99048d70513c0982e31f8d6a5687b395a7bababf9cf1c71aa7be539ab"
     },
     {
+      "path": "rootfs/home/mks/QD_Q2/access/multi_color/refresh_box.bin",
+      "bytes": 2284,
+      "sha256": "72222caac80cd129c80385dd356e9b7cc1d66e265a97c2acc58bb7cb056b995c"
+    },
+    {
       "path": "rootfs/home/mks/QD_Q2/access/multi_color/refresh_box_anim.gif",
       "bytes": 3671,
       "sha256": "eb3d3f88bf5d067f675c69a528c212d56cb4d8cc53627d7045eb3c17a59de809"
@@ -1020,8 +1025,8 @@
     },
     {
       "path": "rootfs/home/mks/QD_Q2/access/others/polar_cooler.bin",
-      "bytes": 5476,
-      "sha256": "48d7d4a230bc5b37ab2ae926e70694a7c257e9a7c81b87971f75c74f83bc9ab9"
+      "bytes": 6404,
+      "sha256": "fcec4f37cb37c155ec16c82e956efba6c0229fb4af7aae33517cc1ca9688eac0"
     },
     {
       "path": "rootfs/home/mks/QD_Q2/access/pause_icon.bin",
@@ -1172,6 +1177,11 @@
       "path": "rootfs/home/mks/QD_Q2/access/setting/default_avatar.bin",
       "bytes": 20740,
       "sha256": "f4711fa5e199e16bd48e5aa3514523245d7a9614b05e2305155f067e2c587452"
+    },
+    {
+      "path": "rootfs/home/mks/QD_Q2/access/setting/drainage.bin",
+      "bytes": 35348,
+      "sha256": "4964ab5b8f3158d268d4d128cb36496acd65fa0348d25c617a4566a344e033c3"
     },
     {
       "path": "rootfs/home/mks/QD_Q2/access/setting/editor_icon.bin",
@@ -1540,16 +1550,21 @@
     },
     {
       "path": "rootfs/home/mks/QD_Q2/access/startup/open_box_step3.gif",
+      "bytes": 213794,
+      "sha256": "6ee86e036bbbfc0bc928b0ddf3962b965b7359021c7a3f6b55928c1d3fbb5a0b"
+    },
+    {
+      "path": "rootfs/home/mks/QD_Q2/access/startup/open_box_step4.gif",
       "bytes": 313093,
       "sha256": "d71fbca507ee50f7d97fc4931006e45f54aa94622294570cd48511cc1033c183"
     },
     {
-      "path": "rootfs/home/mks/QD_Q2/access/startup/open_box_step4.gif",
+      "path": "rootfs/home/mks/QD_Q2/access/startup/open_box_step5.gif",
       "bytes": 140069,
       "sha256": "db44852949b244e11347b8c113f1d2a0c633870ab186520dd024de06b226d3df"
     },
     {
-      "path": "rootfs/home/mks/QD_Q2/access/startup/open_box_step5.gif",
+      "path": "rootfs/home/mks/QD_Q2/access/startup/open_box_step6.gif",
       "bytes": 284561,
       "sha256": "cfefd3b658be35ed3523635bb30dde456c00747104c430918caf1a7272ebcad4"
     },
@@ -1690,8 +1705,8 @@
     },
     {
       "path": "rootfs/home/mks/QD_Q2/bin/client",
-      "bytes": 13489112,
-      "sha256": "bcce2a3b0c44360fde3a8721cb0786ec6129fa937924f739bff927575195970b"
+      "bytes": 13506904,
+      "sha256": "fa63e0a735f7ccb794d8b4a67f1472111434c6389a5533ff80ec41481f315d03"
     },
     {
       "path": "rootfs/home/mks/fluidd/.version",
@@ -5360,8 +5375,8 @@
     },
     {
       "path": "rootfs/home/mks/klipper/klippy/extras/box_extras.so",
-      "bytes": 4649752,
-      "sha256": "0f7b6bb3ecf517c6632d39c838b38a11f7588ff892c75116f1e0bc3ad09b94a0"
+      "bytes": 4651552,
+      "sha256": "bd07cae01c9c852bd35d9cd8963e9cbe8fc335a606135fbb5997c8263ec53913"
     },
     {
       "path": "rootfs/home/mks/klipper/klippy/extras/box_rfid.so",
@@ -12875,8 +12890,8 @@
     },
     {
       "path": "rootfs/usr/local/bin/algo_app/_internal/websockets-15.0.1.dist-info/RECORD",
-      "bytes": 7455,
-      "sha256": "32b752beaad8e8a9d8d150b841384901afb101052af3ff99b98dcfd57e335243"
+      "bytes": 7562,
+      "sha256": "f7a1709872cbb78d1e10bc327a6389952638bb0e9c77f7bd949963e875ed325a"
     },
     {
       "path": "rootfs/usr/local/bin/algo_app/_internal/websockets-15.0.1.dist-info/REQUESTED",
@@ -12960,7 +12975,7 @@
     }
   ],
   "summary": {
-    "count": 2590,
-    "bytes": 578572129
+    "count": 2593,
+    "bytes": 578844182
   }
 }

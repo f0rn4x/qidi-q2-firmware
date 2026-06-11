@@ -1,5 +1,5 @@
 #! /bin/bash
-VERSION="System_1.1.0"
+VERSION="System_1.1.1"
 
 BAK_FILE="/home/mks/printer_data/config/saved_variables.cfg.bak"
 CFG_FILE="/home/mks/printer_data/config/saved_variables.cfg"
