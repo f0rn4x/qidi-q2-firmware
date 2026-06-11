@@ -1,0 +1,31 @@
+#!/bin/bash
+# deb卸载前执行脚本
+
+# set -e：启用此选项后，如果脚本中的任何命令返回一个非零状态（表示失败），
+# 脚本将立即退出。这有助于防止脚本继续执行后续步骤，从而避免潜在的错误和不一致
+set -e
+
+DEST_DIR="/usr/local/bin"
+SER_DIR="/etc/systemd/system"
+LOG_DIR="/var/log/algo_app"
+VIDEO_DIR="/usr/local/bin/algo_app/video_output"
+
+if [ -f "$SER_DIR/algo_app.service" ]; then
+    rm -f "$SER_DIR/algo_app.service"
+fi
+
+systemctl daemon-reload
+
+if [ -d "$LOG_DIR" ]; then
+    rm -rf "$LOG_DIR"
+fi
+
+if [ -d "$VIDEO_DIR" ]; then
+    rm -rf "$VIDEO_DIR"
+fi
+
+if [ -d "$DEST_DIR/algo_app" ]; then
+    rm -rf "$DEST_DIR/algo_app"
+fi
+
+exit 0

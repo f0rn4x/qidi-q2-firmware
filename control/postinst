@@ -1,0 +1,156 @@
+#! /bin/bash
+VERSION="System_1.1.0"
+
+BAK_FILE="/home/mks/printer_data/config/saved_variables.cfg.bak"
+CFG_FILE="/home/mks/printer_data/config/saved_variables.cfg"
+FLAG_FILE="/var/lib/qidi-q2-system/restore-flag"
+
+if [ -f "$FLAG_FILE" ]; then
+    cp -fp "$BAK_FILE" "$CFG_FILE"
+    rm -f "$FLAG_FILE"
+    echo "$BAK_FILE is not existing"
+    rm -f "$FLAG_FILE"
+fi
+
+# TEMP_FILE=$(mktemp)
+
+# declare -A backup_vars
+# while IFS='=' read -r key value; do
+#     key=$(echo $key | xargs)
+#     value=$(echo $value | xargs)
+    
+#     if [[ ! "$key" =~ ^\[.*\]$ ]] && [ -n "$key" ]; then
+#         backup_vars["$key"]="$value"
+#     fi
+# done < "$BAK_FILE"
+
+# section=""
+# found_variables_section=false
+# missing_vars=false
+
+# cat "$CFG_FILE" > "$TEMP_FILE"
+
+# for key in "${!backup_vars[@]}"; do
+#     if ! grep -q "^$key = " "$CFG_FILE"; then
+#         echo "Missing variable found: $key"
+#         missing_vars=true
+        
+#         if ! grep -q "^\[Variables\]$" "$TEMP_FILE"; then
+#             echo "[Variables]" > "$TEMP_FILE"
+#         fi
+        
+#         echo "$key = ${backup_vars[$key]}" >> "$TEMP_FILE"
+#     fi
+# done
+
+# if [ "$missing_vars" = true ]; then
+#     mv "$TEMP_FILE" "$CFG_FILE"
+#     echo "Configuration file updated with missing variables."
+# else
+#     rm "$TEMP_FILE"
+#     echo "No missing variables found."
+# fi
+
+chown -R mks:netdev /home/mks/printer_data/config/gcode_macro.cfg
+chown -R mks:netdev /home/mks/printer_data/config/printer.cfg
+chown -R mks:netdev /home/mks/printer_data/config/saved_variables.cfg.bak
+chown mks:netdev /home/mks/printer_data/config/box.cfg
+chown mks:netdev /home/mks/printer_data/config/box1.cfg
+chown mks:netdev /home/mks/printer_data/config/box2.cfg
+chown mks:netdev /home/mks/printer_data/config/box3.cfg
+chown mks:netdev /home/mks/printer_data/config/box4.cfg
+chown mks:netdev /home/mks/printer_data/config/moonraker.conf
+chown mks:netdev /home/mks/printer_data/config/officiall_filas_list.cfg
+chown mks:netdev /home/mks/cfg_with_{0..4}
+chown mks:netdev /home/mks/hid-flash
+chown mks:netdev /home/mks/json_reader
+chown mks:netdev /home/mks/mcu_box_to_v2_*.bin
+chown mks:netdev /home/mks/mcu_update_BOX_to_v2.sh
+chown mks:netdev /home/mks/serial_com
+chown mks:netdev /home/mks/serial_com_dict
+chown mks:netdev /home/mks/zlib_decompress
+chown mks:netdev /home/mks/printer_data/config/saved_variables.cfg
+chown -R mks:netdev /home/mks/QD_Q2/
+chown -R mks:netdev /home/mks/klipper/klippy/
+chown -R mks:netdev /home/mks/moonraker/moonraker/
+chown -R mks:netdev /home/mks/fluidd/
+chown -R mks:netdev /home/mks/mcu_update.sh
+chown -R root:root  /root/mcu-id.sh
+chown -R root:root /dev_info.txt
+chown mks:netdev /home/mks/scripts/plr/plr.sh 
+chown mks:netdev /home/mks/klipper.bin     
+chown mks:netdev /home/mks/klipper_THR.bin 
+
+chmod -R 644 /home/mks/printer_data/config/gcode_macro.cfg
+chmod -R 644 /home/mks/printer_data/config/printer.cfg
+chmod -R 644 /home/mks/printer_data/config/saved_variables.cfg.bak
+chmod -R 644 /home/mks/printer_data/config/saved_variables.cfg
+chmod 644 /home/mks/printer_data/config/box.cfg
+chmod 644 /home/mks/printer_data/config/box1.cfg
+chmod 644 /home/mks/printer_data/config/box2.cfg
+chmod 644 /home/mks/printer_data/config/box3.cfg
+chmod 644 /home/mks/printer_data/config/box4.cfg
+chmod 644 /home/mks/printer_data/config/moonraker.conf
+chmod 644 /home/mks/printer_data/config/officiall_filas_list.cfg
+chmod 644 /home/mks/cfg_with_{0..4}
+chmod 755 /home/mks/hid-flash
+chmod 755 /home/mks/json_reader
+chmod 755 /home/mks/mcu_box_to_v2_*.bin
+chmod 755 /home/mks/mcu_update_BOX_to_v2.sh
+chmod 755 /home/mks/serial_com
+chmod 755 /home/mks/serial_com_dict
+chmod 755 /home/mks/zlib_decompress
+chmod -R 755 /home/mks/QD_Q2/
+chmod +x /home/mks/mcu_update.sh
+chmod 755 /root/mcu-id.sh
+chmod 777 /dev_info.txt
+chmod 755 /home/mks/scripts/plr/plr.sh 
+chmod 777 /home/mks/klipper.bin    
+chmod 777 /home/mks/klipper_THR.bin
+
+
+find /home/mks/klipper/klippy/ \
+    /home/mks/moonraker/moonraker/ \
+    /home/mks/fluidd/ \
+-type d -exec chmod 755 {} \;
+
+find /home/mks/klipper/klippy/ \
+    /home/mks/moonraker/moonraker/ \
+    /home/mks/fluidd/ \
+-type f -exec chmod 644 {} \;
+
+LOG_DIR="/var/log/algo_app"
+VIDEO_DIR="/usr/local/bin/algo_app/video_output"
+
+# 检查 algo_app.service 文件是否存在
+if [ -f "/etc/systemd/system/algo_app.service" ]; then
+    systemctl daemon-reload
+    systemctl enable algo_app.service
+    systemctl start algo_app.service
+else
+    echo "algo_app.service not found. Please check the installation."
+    exit 1
+fi
+
+# 检查并创建日志目录
+if [ ! -d "$LOG_DIR" ]; then
+    mkdir -p "$LOG_DIR"
+    chown -R root:root "$LOG_DIR"
+    chmod 755 "$LOG_DIR"
+    echo "Created log directory: $LOG_DIR"
+else
+    echo "Log directory already exists: $LOG_DIR"
+fi
+
+# 检查并创建视频输出目录
+if [ ! -d "$VIDEO_DIR" ]; then
+    mkdir -p "$VIDEO_DIR"
+    chown -R root:root "$VIDEO_DIR"
+    chmod 755 "$VIDEO_DIR"
+    echo "Created video output directory: $VIDEO_DIR"
+else
+    echo "Video output directory already exists: $VIDEO_DIR"
+fi
+
+
+echo "`date '+%Y-%m-%d %H:%M:%S'`: Add $VERSION" >> /home/mks/iso_version.txt

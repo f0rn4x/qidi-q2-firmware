@@ -1,0 +1,61 @@
+#! /bin/bash
+
+# Delete unencrypted klipper file
+REMOVE_PATTERNS=(
+    "/home/mks/klipper/klippy/extras/aht20_f.*"
+    "/home/mks/klipper/klippy/extras/box_detect.*"
+    "/home/mks/klipper/klippy/extras/box_extras.*"
+    "/home/mks/klipper/klippy/extras/box_rfid.*"
+    "/home/mks/klipper/klippy/extras/box_stepper.*"
+    "/home/mks/klipper/klippy/extras/buttons_irq.*"
+)
+
+for pattern in "${REMOVE_PATTERNS[@]}"; do
+    for file in $pattern; do
+        if [ -f "$file" ]; then
+            rm -f "$file"
+            echo "Removed: $file"
+        fi
+    done
+done
+
+find /home/mks/ -name "mcu_box_to_v2_*.bin" -type f -delete -print | while read -r file; do
+    echo "Removed: $file"
+done
+
+BAK_FILE="/home/mks/printer_data/config/saved_variables.cfg.bak"
+FLAG_FILE="/var/lib/qidi-q2-system/restore-flag"
+
+
+if [ -f "$FLAG_FILE" ]; then
+    rm -f "$FLAG_FILE"
+fi
+
+mkdir -p "$(dirname "$FLAG_FILE")"
+
+if [ ! -f "$BAK_FILE" ]; then
+    touch "$FLAG_FILE"
+fi
+
+LOG_DIR="/var/log/algo_app"
+# 检查并处理日志目录
+if [ -d "$LOG_DIR" ]; then
+    # 如果日志文件存在，删除它
+    rm -rf "$LOG_DIR/*.log"
+    echo "已删除旧的日志文件"
+else
+    # 如果日志目录不存在，创建它
+    mkdir -p "$LOG_DIR"
+    echo "创建新的日志目录"
+fi
+
+# 设置日志目录权限
+chown -R root:root "$LOG_DIR"
+chmod 755 "$LOG_DIR"
+
+# 停止旧版本服务
+if systemctl is-active --quiet algo_app.service; then
+    systemctl stop algo_app.service
+    echo "停止旧版本服务"
+fi
+

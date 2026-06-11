@@ -1,0 +1,10 @@
+# QIDI Q2 firmware archive — git attributes
+#
+# No Git LFS. The large / binary payload is NOT committed: it ships as a per-release
+# bundle (see assets-manifest.json + scripts/rehydrate.py). This repo is the lean text
+# tree + that manifest.
+#
+# Preserve every byte: never convert line endings, on commit or checkout, regardless of
+# the cloner's core.autocrlf. Text files still diff normally (git detects binary content
+# by NUL bytes); the small binary blobs under package/ stay byte-exact.
+*  -text
