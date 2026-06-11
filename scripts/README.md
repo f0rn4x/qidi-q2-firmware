@@ -60,8 +60,8 @@ binaries) is kept **out of git** and shipped as one zip per release, so the repo
 few MB of diffable text. `assets-manifest.json` is the link between the two.
 
 A file is bundled as an **asset** if it is in a vendored runtime tree
-(`**/algo_app/**`, `**/fluidd/**`), is binary, or is ≥ 1 MiB — except `package/` and
-`control/`, which always stay in git. The binary/size tests are content-based, so a
+(`**/algo_app/**`, `**/fluidd/**`, `**/klippy-env/**`, `**/moonraker-env/**`), is
+binary, or is ≥ 1 MiB — except `package/` and `control/`, which always stay in git. The binary/size tests are content-based, so a
 renamed/moved binary (e.g. `client` → `qidiclient`) is caught automatically.
 
 **Publish a version** (fits the copy-over-and-tag flow):

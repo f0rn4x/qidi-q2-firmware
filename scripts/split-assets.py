@@ -15,7 +15,7 @@ Then commit the lean tree + manifest, tag the version, and upload dist/<name>.zi
 the release asset. `rehydrate.py` reverses this and verifies every hash.
 
 A file is an ASSET if ANY of:
-  - it lives in a vendored runtime tree (**/algo_app/**, **/fluidd/**), or
+  - it lives in a vendored runtime tree (algo_app, fluidd, klippy-env, moonraker-env), or
   - its content is binary (NUL byte / not valid UTF-8 / ELF), or
   - it is >= the size threshold (default 1 MiB).
 ...except package/ and control/ (small, central reference) which always stay in git.
@@ -33,7 +33,7 @@ import os
 import sys
 import zipfile
 
-VENDOR   = ("/algo_app/", "/fluidd/")
+VENDOR   = ("/algo_app/", "/fluidd/", "/klippy-env/", "/moonraker-env/")
 KEEP_TOP = ("package", "control", "scripts")
 META     = {"README.md", ".gitattributes", ".gitignore", "assets-manifest.json"}
 SKIP_DIR = {".git", "__pycache__", "dist"}

@@ -1,5 +1,8 @@
-Package: qidi-q2-system
-Version: 1.1.1
+Package: qd-q2-system
+Replaces: qidi-q2-system
+Conflicts: qidi-q2-system
+Provides: qidi-q2-system
+Version: 01.01.02.01
 Architecture: arm64
 Uploaders: C.R.Y.
 Maintainer: Makerbase

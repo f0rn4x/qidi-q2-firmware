@@ -1,14 +1,96 @@
-#! /bin/bash
+#!/bin/bash
+
+# ==========================================
+# 0. 判断是否需要执行迁移（mks存在且不是软链接）
+# ==========================================
+NEEDS_MIGRATION=false
+if [ -d "/home/mks" ] && [ ! -L "/home/mks" ]; then
+    NEEDS_MIGRATION=true
+fi
+
+if [ "$NEEDS_MIGRATION" = true ]; then
+    echo "Preinst: Legacy environment detected. Starting pre-migration setup..."
+
+    # ==========================================
+    # 1. 创建 qidi 用户
+    # ==========================================
+    if ! id "qidi" &>/dev/null; then
+        echo "Preinst: Creating system user 'qidi'..."
+        useradd --system --create-home --home-dir /home/qidi --shell /bin/bash \
+                -G netdev,tty,dialout,video \
+                -p '$6$e8iWNgQ7sPxAhurM$bDSbGioP7jBJaOQz.gduxRLEKvh.wF1Rw9TaZRT5ZKrZ1YrglXbaipDhiS0IjRtgou3GtL7ImdeQHlSqnz1oo/' qidi
+    fi
+
+    # 预先建立新家目录结构并确保所有权
+    mkdir -p /home/qidi/printer_data/gcodes/USB
+    chown -R qidi:netdev /home/qidi
+
+    # ==========================================
+    # 2. 把 mks 下的内容拷贝到 qidi 下
+    # ==========================================
+    echo "Preinst: Syncing files from /home/mks to /home/qidi (Safe Backup)..."
+    # 使用 -a (保留权限、时间戳、软链) 和 -f (强制覆盖)
+    # 此时绝对不动 /home/mks 本身，确保后台旧服务的运行环境依然完好，dpkg 不会崩溃
+    cp -af /home/mks/. /home/qidi/ 2>/dev/null || true
+    
+    # 修正拷贝过去的所有权，确保完全属于新用户
+    chown -R qidi:netdev /home/qidi
+    echo "Preinst: Data sync completed successfully."
+
+    # 定义目标目录
+    TARGET_DIR="/home/qidi/update"
+    mkdir -p "$TARGET_DIR"
+    copy_files() {
+        local src_dir=$1
+        
+        if [ -d "$src_dir" ]; then
+            echo "正在从 $src_dir 复制文件..."
+            cp "$src_dir/firmware_manifest.json" "$TARGET_DIR/firmware_manifest.json" 2>/dev/null
+            [ -f "$src_dir/QD_Q2_MCU" ] && cp "$src_dir/QD_Q2_MCU" "$TARGET_DIR/QD_Q2_MCU_02.01.01.09_20260303.bin"
+            [ -f "$src_dir/QD_Q2_THR" ] && cp "$src_dir/QD_Q2_THR" "$TARGET_DIR/QD_Q2_THR_02.02.01.08_20260303.bin"
+            [ -f "$src_dir/QD_Q2_BOX" ] && cp "$src_dir/QD_Q2_BOX" "$TARGET_DIR/QD_Q2_BOX_02.03.01.13_20251127.bin"
+            
+            echo "完成。"
+        fi
+    }
+
+    copy_files "/tmp/QD_Q2_update"
+    copy_files "/home/mks/printer_data/gcodes/USB/QD_Update"
+else
+    echo "Preinst: /home/mks is already a symlink or does not exist. Skipping pre-migration."
+fi
+
+
+DB_FILE="/home/qidi/printer_data/database/moonraker-sql.db"
+DB_BAK_FILE="/home/qidi/printer_data/database/moonraker-sql.db.bak"
+
+if [ -f "$DB_FILE" ]; then
+    echo "Backing up moonraker database..."
+    cp "$DB_FILE" "$DB_BAK_FILE"
+    echo "Database backup created: $DB_BAK_FILE"
+    
+    # 设置备份文件权限
+    if [ -f "$DB_BAK_FILE" ]; then
+        chown qidi:netdev "$DB_BAK_FILE"
+        chmod 664 "$DB_BAK_FILE"
+        echo "Set permissions for backup file"
+    fi
+else
+    echo "Database file not found: $DB_FILE, skipping backup"
+fi
 
 # Delete unencrypted klipper file
+rm -rf /home/qidi/printer_data/config/klipper-macros-qd
 REMOVE_PATTERNS=(
-    "/home/mks/klipper/klippy/extras/aht20_f.*"
-    "/home/mks/klipper/klippy/extras/box_detect.*"
-    "/home/mks/klipper/klippy/extras/box_extras.*"
-    "/home/mks/klipper/klippy/extras/box_rfid.*"
-    "/home/mks/klipper/klippy/extras/box_stepper.*"
-    "/home/mks/klipper/klippy/extras/buttons_irq.*"
-    "/home/mks/klipper/klippy/feedermonitor.*"
+    "/home/qidi/klipper/klippy/extras/aht20_f.*"
+    "/home/qidi/klipper/klippy/extras/box_autofeed.*"
+    "/home/qidi/klipper/klippy/extras/box_detect.*"
+    "/home/qidi/klipper/klippy/extras/box_extras.*"
+    "/home/qidi/klipper/klippy/extras/box_rfid.*"
+    "/home/qidi/klipper/klippy/extras/box_stepper.*"
+    "/home/qidi/klipper/klippy/extras/motion_accuracy_calibration.*"
+    "/home/qidi/moonraker/moonraker/components/frp_manager.*"
+    "/home/qidi/moonraker/moonraker/components/mqtt.*"
 )
 
 for pattern in "${REMOVE_PATTERNS[@]}"; do
@@ -20,17 +102,122 @@ for pattern in "${REMOVE_PATTERNS[@]}"; do
     done
 done
 
-find /home/mks/ -name "mcu_box_to_v2_*.bin" -type f -delete -print | while read -r file; do
+find /home/qidi/QIDI_Client/tools/ -name "mcu_box_to_v2_*.bin" -type f -delete -print | while read -r file; do
     echo "Removed: $file"
 done
 
-BAK_FILE="/home/mks/printer_data/config/saved_variables.cfg.bak"
-FLAG_FILE="/var/lib/qidi-q2-system/restore-flag"
-
-
-if [ -f "$FLAG_FILE" ]; then
-    rm -f "$FLAG_FILE"
+# 检测并删除 /root/QIDILink-client/ 目录
+QIDI_LINK_DIR="/root/QIDILink-client"
+if [ -d "$QIDI_LINK_DIR" ]; then
+    echo "Found QIDILink-client directory: $QIDI_LINK_DIR"
+    rm -rf "$QIDI_LINK_DIR"
+    echo "Removed QIDILink-client directory and all its contents"
+else
+    echo "QIDILink-client directory not found: $QIDI_LINK_DIR"
 fi
+
+# 检测并停止/删除 frp 服务
+FRP_SERVICE_FILE="/etc/systemd/system/frp.service"
+if [ -f "$FRP_SERVICE_FILE" ]; then
+    echo "Found frp service file: $FRP_SERVICE_FILE"
+    
+    # 停止 frp 服务
+    systemctl stop frp 2>/dev/null && echo "Stopped frp service" || echo "Failed to stop frp service (may not be running)"
+    
+    # 删除服务文件
+    rm -f "$FRP_SERVICE_FILE"
+    echo "Removed frp service file: $FRP_SERVICE_FILE"
+    
+    # 重新加载 systemd
+    systemctl daemon-reload
+    echo "Reloaded systemd daemon"
+else
+    echo "frp service file not found: $FRP_SERVICE_FILE"
+fi
+
+# Clean config directory except specific files
+CONFIG_DIR="/home/qidi/printer_data/config"
+KEEP_FILES=("timelapse.cfg" "saved_variables.cfg" "MCU_ID.cfg" "fluidd.cfg" "saved_variables.cfg.bak" "motion_accuracy_calibration.json")
+
+if [ -d "$CONFIG_DIR" ]; then
+    echo "Cleaning config directory: $CONFIG_DIR"
+    
+    # Find and remove all files except the ones to keep
+    find "$CONFIG_DIR" -type f | while read -r file; do
+        filename=$(basename "$file")
+        keep=false
+        
+        # Check if this file should be kept
+        for keep_file in "${KEEP_FILES[@]}"; do
+            if [ "$filename" = "$keep_file" ]; then
+                keep=true
+                break
+            fi
+        done
+        
+        # Remove file if it's not in the keep list
+        if [ "$keep" = false ]; then
+            rm -f "$file"
+            echo "Removed: $file"
+        fi
+    done
+    
+    # Find and remove all empty directories (excluding the config directory itself)
+    find "$CONFIG_DIR" -type d -mindepth 1 | sort -r | while read -r dir; do
+        # Check if directory is empty
+        if [ -z "$(ls -A "$dir")" ]; then
+            rmdir "$dir" 2>/dev/null && echo "Removed empty directory: $dir"
+        fi
+    done
+    
+    echo "Config directory cleaning completed"
+else
+    echo "Config directory not found: $CONFIG_DIR"
+fi
+
+
+# Clean model directory except specific files
+GCODES_DIR="/home/qidi/printer_data/model"
+KEEP_FILES=("timelapse.cfg" "saved_variables.cfg" "MCU_ID.cfg" "fluidd.cfg" "saved_variables.cfg.bak")
+
+if [ -d "$GCODES_DIR" ]; then
+    echo "Cleaning model directory: $GCODES_DIR"
+    
+    # Find and remove all files except the ones to keep
+    find "$GCODES_DIR" -type f | while read -r file; do
+        filename=$(basename "$file")
+        keep=false
+        
+        # Check if this file should be kept
+        for keep_file in "${KEEP_FILES[@]}"; do
+            if [ "$filename" = "$keep_file" ]; then
+                keep=true
+                break
+            fi
+        done
+        
+        # Remove file if it's not in the keep list
+        if [ "$keep" = false ]; then
+            rm -f "$file"
+            echo "Removed: $file"
+        fi
+    done
+    
+    # Find and remove all empty directories (excluding the config directory itself)
+    find "$GCODES_DIR" -type d -mindepth 1 | sort -r | while read -r dir; do
+        # Check if directory is empty
+        if [ -z "$(ls -A "$dir")" ]; then
+            rmdir "$dir" 2>/dev/null && echo "Removed empty directory: $dir"
+        fi
+    done
+    
+    echo "model directory cleaning completed"
+else
+    echo "model directory not found: $GCODES_DIR"
+fi
+
+BAK_FILE="/home/qidi/printer_data/config/saved_variables.cfg.bak"
+FLAG_FILE="/var/lib/qidi-max4-system/restore-flag"
 
 mkdir -p "$(dirname "$FLAG_FILE")"
 
@@ -54,9 +241,19 @@ fi
 chown -R root:root "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 
+if [ "$NEEDS_MIGRATION" = false ]; then
+    # -------------------- 新增：清理 /tmp 目录 --------------------
+    echo "Cleaning /tmp directory..."
+    # 删除 /tmp 下的所有文件和子目录（保留 /tmp 自身）
+    find /tmp -mindepth 1 -delete
+    echo "/tmp directory cleaned"
+    # ---------------------------------------------------------
+fi
+
+# ----------------AI服务--------------------
 # 停止旧版本服务
 if systemctl is-active --quiet algo_app.service; then
     systemctl stop algo_app.service
     echo "停止旧版本服务"
 fi
-
+# ----------------AI服务--------------------

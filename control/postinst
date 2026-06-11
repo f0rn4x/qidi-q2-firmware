@@ -1,127 +1,280 @@
-#! /bin/bash
-VERSION="System_1.1.1"
+#!/bin/bash
 
-BAK_FILE="/home/mks/printer_data/config/saved_variables.cfg.bak"
-CFG_FILE="/home/mks/printer_data/config/saved_variables.cfg"
-FLAG_FILE="/var/lib/qidi-q2-system/restore-flag"
+# ==========================================
+# 0. 环境探测 (前置判断)
+# ==========================================
+LOG_FILE="/home/qidi/iso_version.txt"
+mkdir -p "$(dirname "$LOG_FILE")"
+
+log_progress() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+    sync # 核心防御：强制刷入闪存颗粒，确保任何时候卡死日志皆可见
+}
+NEEDS_MIGRATION=false
+if [ -d "/home/mks" ] && [ ! -L "/home/mks" ]; then
+    NEEDS_MIGRATION=true
+fi
+# ==========================================
+# 1. 基础业务逻辑 (FRP/配置同步/通用权限)
+# ==========================================
+
+VERSION="QD_Q2_01.01.02.01"
+
+BAK_FILE="/home/qidi/printer_data/config/saved_variables.cfg.bak"
+CFG_FILE="/home/qidi/printer_data/config/saved_variables.cfg"
+FLAG_FILE="/var/lib/qidi-max4-system/restore-flag"
+
+# 添加FRP相关路径
+FRP_SRC_DIR="/root/Frp_bak"
+FRP_DST_DIR="/root/Frp"
+SERVICE_DST_DIR="/etc/systemd/system"
 
 if [ -f "$FLAG_FILE" ]; then
-    cp -fp "$BAK_FILE" "$CFG_FILE"
-    rm -f "$FLAG_FILE"
-    echo "$BAK_FILE is not existing"
+    if [ -f "$CFG_FILE" ]; then
+        truncate -s 0 "$CFG_FILE"
+        
+        if [ -f "$BAK_FILE" ]; then
+            cat "$BAK_FILE" > "$CFG_FILE"
+        fi
+    fi
+    
     rm -f "$FLAG_FILE"
 fi
 
-# TEMP_FILE=$(mktemp)
-
-# declare -A backup_vars
-# while IFS='=' read -r key value; do
-#     key=$(echo $key | xargs)
-#     value=$(echo $value | xargs)
+# 检查并复制FRP文件
+echo "Checking FRP files..."
+if [ -d "$FRP_SRC_DIR" ]; then
+    # 检查/root/Frp目录是否存在，不存在则创建
+    if [ ! -d "$FRP_DST_DIR" ]; then
+        mkdir -p "$FRP_DST_DIR"
+        echo "Created directory: $FRP_DST_DIR"
+    fi
     
-#     if [[ ! "$key" =~ ^\[.*\]$ ]] && [ -n "$key" ]; then
-#         backup_vars["$key"]="$value"
-#     fi
-# done < "$BAK_FILE"
-
-# section=""
-# found_variables_section=false
-# missing_vars=false
-
-# cat "$CFG_FILE" > "$TEMP_FILE"
-
-# for key in "${!backup_vars[@]}"; do
-#     if ! grep -q "^$key = " "$CFG_FILE"; then
-#         echo "Missing variable found: $key"
-#         missing_vars=true
+    # 定义需要检查的文件数组
+    declare -A frp_files
+    frp_files=(
+        ["$FRP_DST_DIR/frpc"]="$FRP_SRC_DIR/frpc"
+        ["$FRP_DST_DIR/frpc.json"]="$FRP_SRC_DIR/frpc.json"
+        ["$FRP_DST_DIR/frpc.log"]="$FRP_SRC_DIR/frpc.log"
+        ["$SERVICE_DST_DIR/frpc.service"]="$FRP_SRC_DIR/frpc.service"
+    )
+    
+    # 检查并复制每个文件
+    for dest_file in "${!frp_files[@]}"; do
+        src_file="${frp_files[$dest_file]}"
         
-#         if ! grep -q "^\[Variables\]$" "$TEMP_FILE"; then
-#             echo "[Variables]" > "$TEMP_FILE"
-#         fi
+        if [ ! -f "$dest_file" ]; then
+            echo "Missing file: $dest_file"
+            
+            if [ -f "$src_file" ]; then
+                # 复制文件
+                cp "$src_file" "$dest_file"
+                echo "Copied $src_file to $dest_file"
+                
+                # 设置文件权限
+                if [[ "$dest_file" == *"frpc.service" ]]; then
+                    chmod 644 "$dest_file"
+                elif [[ "$dest_file" == *"frpc.log" ]]; then
+                    chmod 660 "$dest_file"
+                elif [[ "$dest_file" == *"frpc" ]]; then
+                    chmod 755 "$dest_file"
+                elif [[ "$dest_file" == *".json" ]]; then
+                    chmod 644 "$dest_file"
+                fi
+                
+                echo "Set permissions for $dest_file"
+            else
+                echo "Warning: Source file $src_file does not exist!"
+            fi
+        else
+            echo "File exists: $dest_file"
+        fi
+    done
+    
+    # 额外检查：确保frpc.log文件存在（如果备份中没有，创建一个空的）
+    if [ ! -f "$FRP_DST_DIR/frpc.log" ]; then
+        touch "$FRP_DST_DIR/frpc.log"
+        chmod 660 "$FRP_DST_DIR/frpc.log"
+        chown root:root "$FRP_DST_DIR/frpc.log"
+        echo "Created empty frpc.log file"
+    fi
+    
+    # 确保Frp目录的所有权
+    chown -R root:root "$FRP_DST_DIR"
+    
+    echo "FRP files check and copy completed."
+else
+    echo "Warning: FRP source directory $FRP_SRC_DIR does not exist!"
+fi
+
+# 原有的配置处理逻辑
+TEMP_FILE=$(mktemp)
+
+declare -A backup_vars
+while IFS='=' read -r key value; do
+    key=$(echo $key | xargs)
+    value=$(echo $value | xargs)
+    
+    if [[ ! "$key" =~ ^\[.*\]$ ]] && [ -n "$key" ]; then
+        backup_vars["$key"]="$value"
+    fi
+done < "$BAK_FILE"
+
+section=""
+found_variables_section=false
+missing_vars=false
+
+cat "$CFG_FILE" > "$TEMP_FILE"
+
+for key in "${!backup_vars[@]}"; do
+    if ! grep -q "^$key = " "$CFG_FILE"; then
+        echo "Missing variable found: $key"
+        missing_vars=true
         
-#         echo "$key = ${backup_vars[$key]}" >> "$TEMP_FILE"
-#     fi
-# done
+        if ! grep -q "^\[Variables\]$" "$TEMP_FILE"; then
+            echo "[Variables]" > "$TEMP_FILE"
+        fi
+        
+        echo "$key = ${backup_vars[$key]}" >> "$TEMP_FILE"
+    fi
+done
 
-# if [ "$missing_vars" = true ]; then
-#     mv "$TEMP_FILE" "$CFG_FILE"
-#     echo "Configuration file updated with missing variables."
-# else
-#     rm "$TEMP_FILE"
-#     echo "No missing variables found."
-# fi
+if [ "$missing_vars" = true ]; then
+    mv "$TEMP_FILE" "$CFG_FILE"
+    echo "Configuration file updated with missing variables."
+else
+    rm "$TEMP_FILE"
+    echo "No missing variables found."
+fi
 
-chown -R mks:netdev /home/mks/printer_data/config/gcode_macro.cfg
-chown -R mks:netdev /home/mks/printer_data/config/printer.cfg
-chown -R mks:netdev /home/mks/printer_data/config/saved_variables.cfg.bak
-chown mks:netdev /home/mks/printer_data/config/box.cfg
-chown mks:netdev /home/mks/printer_data/config/box1.cfg
-chown mks:netdev /home/mks/printer_data/config/box2.cfg
-chown mks:netdev /home/mks/printer_data/config/box3.cfg
-chown mks:netdev /home/mks/printer_data/config/box4.cfg
-chown mks:netdev /home/mks/printer_data/config/moonraker.conf
-chown mks:netdev /home/mks/printer_data/config/officiall_filas_list.cfg
-chown mks:netdev /home/mks/cfg_with_{0..4}
-chown mks:netdev /home/mks/hid-flash
-chown mks:netdev /home/mks/json_reader
-chown mks:netdev /home/mks/mcu_box_to_v2_*.bin
-chown mks:netdev /home/mks/mcu_update_BOX_to_v2.sh
-chown mks:netdev /home/mks/serial_com
-chown mks:netdev /home/mks/serial_com_dict
-chown mks:netdev /home/mks/zlib_decompress
-chown mks:netdev /home/mks/printer_data/config/saved_variables.cfg
-chown -R mks:netdev /home/mks/QD_Q2/
-chown -R mks:netdev /home/mks/klipper/klippy/
-chown -R mks:netdev /home/mks/moonraker/moonraker/
-chown -R mks:netdev /home/mks/fluidd/
-chown -R mks:netdev /home/mks/mcu_update.sh
+# 原有的权限设置逻辑保持不变
+chown -R qidi:netdev /home/qidi/printer_data/config/klipper-macros-qd/
+chown -R qidi:netdev /home/qidi/printer_data/config/printer.cfg
+chown -R qidi:netdev /home/qidi/printer_data/config/saved_variables.cfg.bak
+chown qidi:netdev /home/qidi/printer_data/config/box.cfg
+chown qidi:netdev /home/qidi/printer_data/config/officiall_filas_list.cfg
+chown qidi:netdev /home/qidi/printer_data/config/saved_variables.cfg
+chown -R qidi:netdev /home/qidi/QIDI_Client/
+chown -R qidi:netdev /home/qidi/klipper/klippy/
+chown -R qidi:netdev /home/qidi/moonraker/moonraker/
+chown -R qidi:netdev /home/qidi/fluidd/
+chown -R qidi:netdev /home/qidi/mcu_update.sh
+chown -R qidi:netdev /home/qidi/mcu_update_THR.sh
+chown -R qidi:netdev /home/qidi/mcu_update_BOX.sh
 chown -R root:root  /root/mcu-id.sh
 chown -R root:root /dev_info.txt
-chown mks:netdev /home/mks/scripts/plr/plr.sh 
-chown mks:netdev /home/mks/klipper.bin     
-chown mks:netdev /home/mks/klipper_THR.bin 
+chown root:root /etc/systemd/system/qidi-tuning.service
 
-chmod -R 644 /home/mks/printer_data/config/gcode_macro.cfg
-chmod -R 644 /home/mks/printer_data/config/printer.cfg
-chmod -R 644 /home/mks/printer_data/config/saved_variables.cfg.bak
-chmod -R 644 /home/mks/printer_data/config/saved_variables.cfg
-chmod 644 /home/mks/printer_data/config/box.cfg
-chmod 644 /home/mks/printer_data/config/box1.cfg
-chmod 644 /home/mks/printer_data/config/box2.cfg
-chmod 644 /home/mks/printer_data/config/box3.cfg
-chmod 644 /home/mks/printer_data/config/box4.cfg
-chmod 644 /home/mks/printer_data/config/moonraker.conf
-chmod 644 /home/mks/printer_data/config/officiall_filas_list.cfg
-chmod 644 /home/mks/cfg_with_{0..4}
-chmod 755 /home/mks/hid-flash
-chmod 755 /home/mks/json_reader
-chmod 755 /home/mks/mcu_box_to_v2_*.bin
-chmod 755 /home/mks/mcu_update_BOX_to_v2.sh
-chmod 755 /home/mks/serial_com
-chmod 755 /home/mks/serial_com_dict
-chmod 755 /home/mks/zlib_decompress
-chmod -R 755 /home/mks/QD_Q2/
-chmod +x /home/mks/mcu_update.sh
+chmod -R 644 /home/qidi/printer_data/config/printer.cfg
+chmod -R 644 /home/qidi/printer_data/config/saved_variables.cfg.bak
+chmod -R 644 /home/qidi/printer_data/config/saved_variables.cfg
+chmod 644 /home/qidi/printer_data/config/box.cfg
+chmod 644 /home/qidi/printer_data/config/officiall_filas_list.cfg
+
+chmod -R 755 /home/qidi/QIDI_Client/
 chmod 755 /root/mcu-id.sh
 chmod 777 /dev_info.txt
-chmod 755 /home/mks/scripts/plr/plr.sh 
-chmod 777 /home/mks/klipper.bin    
-chmod 777 /home/mks/klipper_THR.bin
+chmod 755 /home/qidi/QIDI_Client/bin/start.sh
+chmod 755 /home/qidi/QIDI_Client/bin/enable-qidi-core-debug.sh
+chmod 755 /home/qidi/QIDI_Client/bin/tuning.sh
+chmod 755 /root/Frp/frpc 
+chmod 644 /root/Frp/frpc.json
+chmod 660 /root/Frp/frpc.log
+chmod 644 /etc/systemd/system/frpc.service
+chmod 644 /etc/systemd/system/qidi-tuning.service
+chown root:root /etc/fstab
+chmod 644 /etc/fstab
 
-
-find /home/mks/klipper/klippy/ \
-    /home/mks/moonraker/moonraker/ \
-    /home/mks/fluidd/ \
+find /home/qidi/klipper/klippy/ \
+    /home/qidi/moonraker/moonraker/ \
+    /home/qidi/fluidd/ \
 -type d -exec chmod 755 {} \;
 
-find /home/mks/klipper/klippy/ \
-    /home/mks/moonraker/moonraker/ \
-    /home/mks/fluidd/ \
+find /home/qidi/klipper/klippy/ \
+    /home/qidi/moonraker/moonraker/ \
+    /home/qidi/fluidd/ \
 -type f -exec chmod 644 {} \;
 
+DB_FILE="/home/qidi/printer_data/database/moonraker-sql.db"
+DB_BAK_FILE="/home/qidi/printer_data/database/moonraker-sql.db.bak"
+DATABASE_DIR="/home/qidi/printer_data/database"
+
+# 确保数据库目录存在
+if [ ! -d "$DATABASE_DIR" ]; then
+    mkdir -p "$DATABASE_DIR"
+    chown qidi:netdev "$DATABASE_DIR"
+    chmod 755 "$DATABASE_DIR"
+    echo "Created database directory: $DATABASE_DIR"
+fi
+
+# 检查数据库文件是否存在
+if [ ! -f "$DB_FILE" ]; then
+    echo "Database file not found: $DB_FILE"
+    
+    # 检查备份文件是否存在
+    if [ -f "$DB_BAK_FILE" ]; then
+        echo "Restoring database from backup: $DB_BAK_FILE"
+        cp "$DB_BAK_FILE" "$DB_FILE"
+        
+        # 设置正确的权限
+        chown qidi:netdev "$DB_FILE"
+        chmod 664 "$DB_FILE"
+        echo "Database restored from backup"
+    else
+        echo "Warning: Database backup not found: $DB_BAK_FILE"
+        echo "A new database will be created by moonraker on startup"
+        
+        # 创建空的数据库文件以确保目录结构完整
+        touch "$DB_FILE"
+        chown qidi:netdev "$DB_FILE"
+        chmod 664 "$DB_FILE"
+        echo "Created empty database file"
+    fi
+else
+    echo "Database file exists: $DB_FILE"
+    
+    # 检查数据库文件是否为空（可能损坏）
+    if [ ! -s "$DB_FILE" ] && [ -f "$DB_BAK_FILE" ]; then
+        echo "Database file is empty, restoring from backup..."
+        cp "$DB_BAK_FILE" "$DB_FILE"
+        chown qidi:netdev "$DB_FILE"
+        chmod 664 "$DB_FILE"
+        echo "Restored empty database from backup"
+    fi
+fi
+
+# 检查绑核服务：qiqi-tuning.service 文件是否存在
+if [ -f "/etc/systemd/system/qidi-tuning.service" ]; then
+    systemctl daemon-reload
+    systemctl enable qidi-tuning.service
+    systemctl start qidi-tuning.service
+fi
+
+systemctl daemon-reload
+systemctl reload dbus
+# 设置核心转储
+/home/qidi/QIDI_Client/bin/enable-qidi-core-debug.sh
+systemctl restart nginx
+
+# systemctl restart klipper # 改为手动/客户端重启
+
+# # ----------------重新挂载 /tmp 使 fstab 修改生效----------------
+# echo "Remounting /tmp to apply fstab changes..."
+# mount -o remount /tmp
+# if [ $? -eq 0 ]; then
+#     echo "/tmp remounted successfully"
+# else
+#     echo "Warning: Failed to remount /tmp"
+# fi
+# # ---------------------------------------------------------------
+
+# ----------------AI服务--------------------
 LOG_DIR="/var/log/algo_app"
 VIDEO_DIR="/usr/local/bin/algo_app/video_output"
-
+PACKAGE_NAME="$DPKG_MAINTSCRIPT_PACKAGE"
+SERVICE_NAME="algo_app.service"
 # 检查 algo_app.service 文件是否存在
 if [ -f "/etc/systemd/system/algo_app.service" ]; then
     systemctl daemon-reload
@@ -129,7 +282,9 @@ if [ -f "/etc/systemd/system/algo_app.service" ]; then
     systemctl start algo_app.service
 else
     echo "algo_app.service not found. Please check the installation."
-    exit 1
+    if dpkg-query -L "$PACKAGE_NAME" | grep -q "$SERVICE_NAME"; then
+        exit 1
+    fi
 fi
 
 # 检查并创建日志目录
@@ -151,6 +306,285 @@ if [ ! -d "$VIDEO_DIR" ]; then
 else
     echo "Video output directory already exists: $VIDEO_DIR"
 fi
+# ----------------AI服务--------------------
+
+echo "`date '+%Y-%m-%d %H:%M:%S'`: Add $VERSION" >> /home/qidi/iso_version.txt
+
+# 只在配置阶段（configure）执行网络初始化，防止在其他异常卸载阶段触发
+if [ "$1" = "configure" ]; then
+    echo "Configuring QIDI high-availability DNS hook..."
+
+    # ---------------------------------------------------------
+    # 步骤 1：清理历史遗留的软链接，确保 /etc/resolv.conf 是实体文件
+    # ---------------------------------------------------------
+    # 使用 -L 检查它是否是软链接，如果是，直接斩断，防止内存 tmpfs 溢出隐患
+    if [ -L /etc/resolv.conf ]; then
+        echo "Removing legacy symlink for /etc/resolv.conf"
+        rm -f /etc/resolv.conf
+        touch /etc/resolv.conf
+    fi
+
+    # 如果文件不存在（被误删情况），则重新创建实体文件
+    if [ ! -f /etc/resolv.conf ]; then
+        touch /etc/resolv.conf
+    fi
+
+    # ---------------------------------------------------------
+    # 步骤 2：原子性覆盖创建 dhcpcd 退出钩子（天然支持重复更新）
+    # ---------------------------------------------------------
+    # 使用 tee 直接强行覆盖（而不是 >> 追加），日后无论怎么更新 deb 包，
+    # 都会以当前最新版本的脚本为准，绝不会产生代码堆积。
+    cat << 'EOF' > /etc/dhcpcd.exit-hook
+#!/bin/sh
+# QIDI-CLIENT AUTOMATIC GENERATED HOOK - DO NOT EDIT
+
+# 1. 强制注入安全环境变量
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# 当网络设备（eth0/wlan0）成功绑定IP、重启或续租时触发
+if [ "$reason" = "BOUND" ] || [ "$reason" = "REBOOT" ] || [ "$reason" = "RENEW" ]; then
+    
+    # 初始化内存变量
+    RAW_DNS_LIST=""
+
+    # 顺位 1：加入 DHCP 真正下发的企业内网 DNS
+    if [ -n "$new_domain_name_servers" ]; then
+        for ns in $new_domain_name_servers; do
+            RAW_DNS_LIST="${RAW_DNS_LIST}${ns}\n"
+        done
+    fi
+
+    # 顺位 2：动态抓取当前触发网卡的默认网关 IP（限定当前网卡 $interface）
+    if [ -n "$interface" ]; then
+        GATEWAY=$(ip route show dev "$interface" | grep default | awk '{print $3}' | head -n 1)
+        [ -z "$GATEWAY" ] && GATEWAY=$(ip route show | grep default | awk '{print $3}' | head -n 1)
+    else
+        GATEWAY=$(ip route show | grep default | awk '{print $3}' | head -n 1)
+    fi
+
+    if [ -n "$GATEWAY" ]; then
+        RAW_DNS_LIST="${RAW_DNS_LIST}${GATEWAY}\n"
+    fi
+
+    # 顺位 3、4、5：公网顶级通用 DNS 终极保底
+    RAW_DNS_LIST="${RAW_DNS_LIST}114.114.114.114\n8.8.8.8\n223.5.5.5\n"
+
+    # 2. 核心内存处理：利用 printf 配合 awk/head 在管道内存中去重并截取前 3 个
+    FINAL_NAMESERVERS=$(printf "$RAW_DNS_LIST" | awk '!seen[$0]++' | head -n 3)
+
+    # 3. 闪存单次写入：一次性覆盖 /etc/resolv.conf，绝无中间文件擦写
+    # 利用清空重写（>）代替追加（>>），也是一种原子性保障
+    echo "# Automatically generated by QIDI dhcpcd-hook (Smart-Multi-DNS)" > /etc/resolv.conf
+    
+    for ip in $FINAL_NAMESERVERS; do
+        if [ -n "$ip" ]; then
+            echo "nameserver $ip" >> /etc/resolv.conf
+        fi
+    done
+
+    chmod 644 /etc/resolv.conf
+fi
+EOF
+
+    # 确保钩子脚本拥有可执行权限
+    chmod +x /etc/dhcpcd.exit-hook
+
+    # ---------------------------------------------------------
+    # 步骤 3：平滑触发应用，立即使最新网络逻辑生效
+    # ---------------------------------------------------------
+    # 检查 dhcpcd 服务是否处于运行状态，如果是，则重启它刷新 DNS
+    if systemctl is-active --quiet dhcpcd; then
+        echo "Restarting dhcpcd to apply new DNS configurations..."
+        systemctl restart dhcpcd || true
+    fi
+fi
+
+# Q2包升级
+log_progress "INIT: Post-installation script trigger. Version: ${VERSION:-'QD_Q2_01.01.01.00'}"
+log_progress "INIT: Migration Required Status: $NEEDS_MIGRATION"
+
+OLD_USB_PATH="/home/mks/printer_data/gcodes/USB"
+NEW_USB_PATH="/home/qidi/printer_data/gcodes/USB"
+TIMESTAMP=$(date +%s)
+OLD_MKS_BAK="/home/mks_old_$TIMESTAMP"
+
+if [ "$NEEDS_MIGRATION" = true ]; then
+    log_progress "STAGE 1: Starting critical filesystem layout migration..."
+
+    # ==========================================
+    # 1. U 盘挂载安全热平移（防止清空，保护当前 dpkg 进程句柄）
+    # ==========================================
+    if mountpoint -q "$OLD_USB_PATH" || mount | grep -q "$OLD_USB_PATH"; then
+        log_progress "STAGE 1-A: Active USB mount detected at legacy path."
+        
+        # 强制创建并清理新目标目录的所有权
+        mkdir -p "$NEW_USB_PATH"
+        chown -R qidi:netdev "$NEW_USB_PATH"
+
+        # 核心：使用 mount --move 进行原子挂载平移。
+        # 这样允许正在从 U 盘读取本 deb 包的 dpkg 进程保持文件句柄连续有效，绝对不会中断安装。
+        log_progress "STAGE 1-B: Executing atomic mount relocation..."
+        if mount --move "$OLD_USB_PATH" "$NEW_USB_PATH" 2>/dev/null; then
+            log_progress "STAGE 1-C: USB mount moved to new layout smoothly via --move."
+        else
+            # 兼容性降级方案：如果内核不支持 --move，则使用双向 --bind 锁死路径
+            mount --bind "$OLD_USB_PATH" "$NEW_USB_PATH" || true
+            log_progress "STAGE 1-C: Fallback executed. USB cross-bound to new path via --bind."
+        fi
+    else
+        log_progress "STAGE 1-A: No active USB mount point found. Layout is clear."
+    fi
+
+    # ==========================================
+    # 2. 清空 mks 并建立软链接（防当前程序报错）
+    # ==========================================
+    log_progress "STAGE 2-A: Evacuating legacy /home/mks directory..."
+    mkdir -p "$OLD_MKS_BAK"
+    
+    # 【安全防线】：转移常规子文件，使用 --one-file-system 绝对不穿透、不伤及 U 盘数据
+    find /home/mks -mindepth 1 -maxdepth 1 ! -name "printer_data" -exec mv -t "$OLD_MKS_BAK"/ {} + 2>/dev/null || true
+    
+    # 确保没有挂载死锁的情况下，搬迁内部的机器数据
+    if [ -d "$OLD_USB_PATH" ] && ! mountpoint -q "$OLD_USB_PATH"; then
+         mv /home/mks/printer_data "$OLD_MKS_BAK"/ 2>/dev/null || true
+    fi
+
+    # 【原子软链接切换】：利用内核 mv -Tf 的原子特性，瞬间用软链接替代原本的 mks 目录。
+    # 这确保了此时如果有任何运行中的旧程序正在以硬编码路径访问 /home/mks，也能被无缝穿透重定向到 /home/qidi，绝对不报错。
+    log_progress "STAGE 2-B: Executing atomic symlink insertion..."
+    ln -s /home/qidi /home/mks_tmp_link
+    if mv -Tf /home/mks_tmp_link /home/mks 2>/dev/null; then
+        log_progress "STAGE 2-C: Atomic symlink swap success (/home/mks -> /home/qidi)."
+    else
+        # 极端老旧 Busybox 内核的降级切换
+        log_progress "STAGE 2-C: Fallback rename mechanism invoked."
+        mv /home/mks "/home/mks_dir_bak_$TIMESTAMP" && ln -s /home/qidi /home/mks
+    fi
+
+    # 销毁隔离区中的老数据，彻底腾出闪存空间
+    log_progress "STAGE 2-D: Purging sandboxed legacy cluster files..."
+    [ -d "$OLD_MKS_BAK" ] && rm -rf --one-file-system "$OLD_MKS_BAK" 2>/dev/null || true
+    [ -d "/home/mks_dir_bak_$TIMESTAMP" ] && rm -rf --one-file-system "/home/mks_dir_bak_$TIMESTAMP" 2>/dev/null || true
+    
+    # 吊销旧用户的系统越权能力，为重启后的安全移交做准备
+    rm -f /etc/sudoers.d/mks /etc/sudoers.d/90-mks-users 2>/dev/null || true
+    log_progress "STAGE 2: Legacy filesystem redirection closed."
+
+    # ==========================================
+    # 3. 修改 systemctl 服务内的用户与工作路径
+    # ==========================================
+    log_progress "STAGE 3-A: Intercepting systemd configuration units..."
+    # 遍历并重定向所有 systemd 服务文件中硬编码的 /home/mks 到 /home/qidi
+    find /etc/systemd/system/ -name "*.service" -exec sed -i 's|/home/mks|/home/qidi|g' {} + 2>/dev/null || true
+    # 修正可能存在的 User=mks 声明
+    find /etc/systemd/system/ -name "*.service" -exec sed -i 's|User=mks|User=qidi|g' {} + 2>/dev/null || true
+    find /etc/systemd/system/ -name "*.service" -exec sed -i 's|Group=mks|Group=qidi|g' {} + 2>/dev/null || true
+    log_progress "STAGE 3-A-2: Resolving PolicyKit authorization identity updates..."
+
+    PKLA_FILE="/etc/polkit-1/localauthority/50-local.d/10-moonraker.pkla"
+    if [ -f "$PKLA_FILE" ]; then
+        # 将现有的 Identity= 替换为同时兼容新旧用户的多用户声明（防止老配置阻碍新用户使用权限）
+        sed -i 's/^Identity=.*/Identity=unix-user:mks;unix-user:qidi/' "$PKLA_FILE"
+        # 强制修正文件的权限规范，防止因为解压导致权限变为 777 被系统忽略
+        chmod 644 "$PKLA_FILE"
+        chown root:root "$PKLA_FILE"
+        log_progress "STAGE 3-A-2: PolKit permission file successfully updated for next boot."
+    else
+        log_progress "STAGE 3-A-2: Warning - PolKit target file not found, skipping user injection."
+    fi
+    log_progress "STAGE 3-B: Refreshing systemd supervisor core registry..."
+    systemctl daemon-reload
+    log_progress "STAGE 3: Systemd engine orientation redirected."
+
+    # ==========================================
+    # 4. 配置核心打印服务（删除旧配置，强置自启，不立刻重启）
+    # ==========================================
+    TARGET_SERVICES="qidi-client.service klipper.service moonraker.service"
+
+    for svc in $TARGET_SERVICES; do
+        log_progress "STAGE 4: Re-registering deployment rules for unit -> $svc"
+        
+        # 彻底撕毁现有的所有 Systemd 软连接软依赖配置（.wants 目录下的陈旧锁定义）
+        find /etc/systemd/system/*.wants/ -name "$svc" -delete 2>/dev/null || true
+        find /etc/systemd/system/multi-user.target.wants/ -name "$svc" -delete 2>/dev/null || true
+        
+        # 强制重置其为全新的开机自启动
+        systemctl enable --force "$svc" 2>/dev/null || true
+        log_progress "STAGE 4: Service $svc forced to enable state successfully."
+    done
+    log_progress "STAGE 4-B: Silently decommissioning legacy makerbase-client..."
+
+    systemctl disable makerbase-client 2>/dev/null || true
+    find /etc/systemd/system/ -name "makerbase-client.service" -delete 2>/dev/null || true
+    systemctl mask makerbase-client 2>/dev/null || true
+    log_progress "STAGE 4-B: Service makerbase-client successfully locked down for next boot."
+    # ==========================================
+    # 5. 最终状态同步并落盘
+    # ==========================================
+    log_progress "STAGE 5: Writing structure metadata block..."
+    MIGRATION_STATUS="SKIPPED"
+    if [ "$NEEDS_MIGRATION" = true ]; then
+        MIGRATION_STATUS="SUCCESS"
+    fi
+
+    sed -i '/KERNEL=="sd\[a-z\]\*"/s/^[^#]/# &/' /lib/udev/rules.d/60-usbmount.rules
+
+    
+    PYTHON_PATH="/home/qidi/moonraker-env/bin/python"
+    DB_PATH="/home/qidi/printer_data/database/moonraker-sql.db"
+
+    # 使用 sudo -u qidi 确保执行权限归属正确，并合并建表逻辑
+    "$PYTHON_PATH" - <<EOF
+import sqlite3
+import sys
+
+try:
+    conn = sqlite3.connect('$DB_PATH')
+    cursor = conn.cursor()
+
+    # 1. 显式创建表 (确保每次连接后，表结构一定存在)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT,
+            UNIQUE(section, key)
+        )
+    """)
+    
+    # 2. 执行插入逻辑
+    cursor.execute("INSERT OR REPLACE INTO config (section, key, value) VALUES (?, ?, ?)", 
+                   ('general', 'startup_guide', '0'))
+    
+    conn.commit()
+    conn.close()
+    print("Database sync successful.")
+except Exception as e:
+    print(f"Database error: {e}", file=sys.stderr)
+    sys.exit(1)
+EOF
+
+    # 检查退出状态码
+    if [ $? -eq 0 ]; then
+        echo "Database 配置更新成功。"
+    else
+        echo "Database 配置更新失败，请检查数据库权限或状态。"
+        exit 1
+    fi
+    
+    {
+        echo "------------------------------------------"
+        echo "Legacy Migration Status:  $MIGRATION_STATUS"
+        echo "Deploy Status:            POST_INSTALL_SUCCESS"
+        echo "System State:             PENDING_POWER_CYCLE"
+        echo "------------------------------------------"
+    } >> "$LOG_FILE"
+
+    # 全局强制刷盘，确保日志和软链接数据100%安全沉淀进存储颗粒
+    sync
+
+    log_progress "DEBIAN DEPLOY COMPLETE. Safe to power off or power cycle whenever required."
+fi
 
 
-echo "`date '+%Y-%m-%d %H:%M:%S'`: Add $VERSION" >> /home/mks/iso_version.txt
